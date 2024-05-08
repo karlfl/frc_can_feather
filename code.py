@@ -110,8 +110,8 @@ def init_pixel_array(message: CANMessage):  # pylint: disable=unused-argument
 # Pattern Chaos
 @canDevice.route(API_ID.PatternChaos)
 def base(message: CANMessage):  # pylint: disable=unused-argument
-    global status_animation
-    status_animation = Pulse(statusPixel, speed=0.1, color=ORANGE, period=3)
+    # global status_animation
+    # status_animation = Pulse(statusPixel, speed=0.1, color=ORANGE, period=3)
     # print("Device", hex(message.api_id))
     # print('\t', message)
     return
@@ -128,8 +128,8 @@ def base(message: CANMessage):  # pylint: disable=unused-argument
 # Pattern Solid
 @canDevice.route(API_ID.PatternSolid)
 def base(message: CANMessage):  # pylint: disable=unused-argument
-    global status_animation
-    status_animation = Blink(statusPixel, speed=0.4, color=ORANGE)
+    # global status_animation
+    # status_animation = Blink(statusPixel, speed=0.4, color=ORANGE)
     # print("Device", hex(message.api_id))
     # print('\t', message)
     return
@@ -138,8 +138,8 @@ def base(message: CANMessage):  # pylint: disable=unused-argument
 # Pattern Blink
 @canDevice.route(API_ID.PatternBlink)
 def base(message: CANMessage):  # pylint: disable=unused-argument
-    global status_animation
-    status_animation = Blink(statusPixel, speed=0.4, color=BLUE)
+    # global status_animation
+    # status_animation = Blink(statusPixel, speed=0.4, color=BLUE)
     # print("Device", hex(message.api_id))
     # print('\t', message)
     return
@@ -213,7 +213,7 @@ async def message_update():
             is_enabled = False
             set_status(None)
 
-        # processes messages ever 20ms.
+        # processes messages every 20ms.
         await asyncio.sleep(0.02)
 
 async def button_monitor():
@@ -231,7 +231,7 @@ async def button_monitor():
             if event.released:
                 print(event.key_number, "Released")
 
-        # processes messages ever 20ms.
+        # monitor buttons every 20ms.
         await asyncio.sleep(0.02)
 
 
