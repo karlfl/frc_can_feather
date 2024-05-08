@@ -96,6 +96,18 @@ class CANDevice:
             self.dev_type, self.dev_mfg, int(apiClass), int(apiIndex), self.dev_num
         )
 
+        return self.__send_can_message(msg_id, message)
+
+    def send_message(self, apiId: int, message: bytes):
+        send_success = False
+
+        msg_id = CANMessage.assemble_message_id(
+            self.dev_type, self.dev_mfg, int(apiId), self.dev_num
+        )
+
+        return self.__send_can_message(msg_id, message)
+
+    def __send_can_message(self, msg_id, message):
         # construct MCP2515 message
         canMessage = Message(id=msg_id, data=message, extended=True)
 

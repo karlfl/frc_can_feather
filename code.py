@@ -8,10 +8,12 @@ from digitalio import DigitalInOut, Direction
 import json
 import neopixel
 import supervisor
+import keypad
 
 from adafruit_led_animation.animation.blink import Blink
 from adafruit_led_animation.animation.solid import Solid
-from adafruit_led_animation.color import RED, GREEN
+from adafruit_led_animation.animation.pulse import Pulse
+from adafruit_led_animation.color import RED, GREEN, BLUE, ORANGE
 
 from frc_can_7491 import CANDevice, CANMessage
 
@@ -26,6 +28,8 @@ led = DigitalInOut(board.LED)
 led.direction = Direction.OUTPUT
 
 statusPixel = neopixel.NeoPixel(board.NEOPIXEL, 1, brightness=0.03, auto_write=False)
+
+keys = keypad.Keys((board.BUTTON,), value_when_pressed=False, pull=True)
 
 neoPixelArray = None
 
@@ -63,7 +67,7 @@ def heartbeat(message: CANMessage):  # pylint: disable=unused-argument
 @canDevice.route(msg_type=CANMessage.Type.Broadcast)
 def broadcast(message: CANMessage):  # pylint: disable=unused-argument
     global is_enabled
-    print("Broadcast: ", message.api_index)
+    # print("Broadcast: ", message.api_index)
     if message.APIIndex == 0:  # broadcast index of 0 = disable immediately
         is_enabled = False
         set_status(None)
@@ -71,18 +75,18 @@ def broadcast(message: CANMessage):  # pylint: disable=unused-argument
 
 
 # Status Request
-@canDevice.route(api_id=0x00)
+@canDevice.route(API_ID.StatusRequest)
 def status_request(message: CANMessage):  # pylint: disable=unused-argu4117
     # immediately send a reply with a status update
     statusMessage = "Team7491"
-    canDevice.send_message(0, 1, message=bytes(statusMessage, "utf-8"))
+    canDevice.send_message(API_ID.StatusReply, message=bytes(statusMessage, "utf-8"))
     # print("Status Sent: ", statusMessage)
     # print('\t', message)
     return
 
 
 # Set Device ID
-@canDevice.route(api_id=0x10)
+@canDevice.route(API_ID.SetDeviceNumber)
 def set_device_number(message: CANMessage):  # pylint: disable=unused-argu4117
     # print("Device", hex(message.api_id))
     # print('\t', message)
@@ -104,15 +108,17 @@ def init_pixel_array(message: CANMessage):  # pylint: disable=unused-argument
 
 
 # Pattern Chaos
-@canDevice.route(api_id=0x20)
+@canDevice.route(API_ID.PatternChaos)
 def base(message: CANMessage):  # pylint: disable=unused-argument
+    global status_animation
+    status_animation = Pulse(statusPixel, speed=0.1, color=ORANGE, period=3)
     # print("Device", hex(message.api_id))
     # print('\t', message)
     return
 
 
 # Pattern Rainbow
-@canDevice.route(api_id=0x21)
+@canDevice.route(API_ID.PatternRainbow)
 def base(message: CANMessage):  # pylint: disable=unused-argument
     # print("Device", hex(message.api_id))
     # print('\t', message)
@@ -120,23 +126,27 @@ def base(message: CANMessage):  # pylint: disable=unused-argument
 
 
 # Pattern Solid
-@canDevice.route(api_id=0x22)
+@canDevice.route(API_ID.PatternSolid)
 def base(message: CANMessage):  # pylint: disable=unused-argument
+    global status_animation
+    status_animation = Blink(statusPixel, speed=0.4, color=ORANGE)
     # print("Device", hex(message.api_id))
     # print('\t', message)
     return
 
 
 # Pattern Blink
-@canDevice.route(api_id=0x23)
+@canDevice.route(API_ID.PatternBlink)
 def base(message: CANMessage):  # pylint: disable=unused-argument
+    global status_animation
+    status_animation = Blink(statusPixel, speed=0.4, color=BLUE)
     # print("Device", hex(message.api_id))
     # print('\t', message)
     return
 
 
 # Pattern Intensity
-@canDevice.route(api_id=0x24)
+@canDevice.route(API_ID.PatternIntensity)
 def base(message: CANMessage):  # pylint: disable=unused-argument
     # print("Device", hex(message.api_id))
     # print('\t', message)
@@ -144,7 +154,7 @@ def base(message: CANMessage):  # pylint: disable=unused-argument
 
 
 # Pattern Scanner
-@canDevice.route(api_id=0x25)
+@canDevice.route(API_ID.PatternScanner)
 def base(message: CANMessage):  # pylint: disable=unused-argument
     # print("Device", hex(message.api_id))
     # print('\t', message)
@@ -152,7 +162,7 @@ def base(message: CANMessage):  # pylint: disable=unused-argument
 
 
 # Pattern Alternating
-@canDevice.route(api_id=0x26)
+@canDevice.route(API_ID.PatternAlternating)
 def base(message: CANMessage):  # pylint: disable=unused-argument
     # print("Device", hex(message.api_id))
     # print('\t', message)
@@ -160,7 +170,7 @@ def base(message: CANMessage):  # pylint: disable=unused-argument
 
 
 # Pattern Chase
-@canDevice.route(api_id=0x27)
+@canDevice.route(API_ID.PatternChase)
 def base(message: CANMessage):  # pylint: disable=unused-argument
     # print("Device", hex(message.api_id))
     # print('\t', message)
@@ -206,11 +216,30 @@ async def message_update():
         # processes messages ever 20ms.
         await asyncio.sleep(0.02)
 
+async def button_monitor():
+    while True:
+        event = keys.events.get()
+        # event will be None if nothing has happened.
+        if event:
+            # print(event)
+            
+            if event.pressed:
+                print(event.key_number, "Pressed")
+                canDevice.send_message(API_ID.ButtonPress, message=bytes(f"Button{event.key_number}", "utf-8"))
+
+            
+            if event.released:
+                print(event.key_number, "Released")
+
+        # processes messages ever 20ms.
+        await asyncio.sleep(0.02)
+
 
 async def main():
     # setup the cooperative multitasking tasks
     status_task = asyncio.create_task(status_update())
     message_task = asyncio.create_task(message_update())
+    button_task = asyncio.create_task(button_monitor())
     await asyncio.gather(status_task, message_task)
     print("Done")
 

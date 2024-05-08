@@ -234,4 +234,23 @@ class CANMessage:
         )
         return msg_id
         
+    def assemble_message_id(dev_type, dev_mfg, api_id, dev_num):
+        # combine the device info with the api id using bitwise AND with left shift
+        device_bits = dev_type << 24
+        mfg_code_bits = dev_mfg << 16
+        # api_class_bits = api_class << 10
+        # api_index_bits = api_index << 6
+        api_id_bits = api_id << 6 
+        # api_id = (api_class_bits | api_index_bits) >> 6
+
+        # print (bin(api_class), bin(api_index), bin(api_id), api_id)
+        # print(bin(device_type), bin(mfg_code), bin(api), bin(device_number))
+        # print(device_type, mfg_code, api, device_number)
+
+        msg_id = (
+            # device_bits | mfg_code_bits | api_class_bits | api_index_bits | dev_num
+            device_bits | mfg_code_bits | api_id_bits | dev_num
+        )
+        return msg_id
+        
 
