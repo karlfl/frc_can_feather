@@ -4,11 +4,11 @@
 import sys
 import asyncio
 import board
-from digitalio import DigitalInOut, Direction
 import json
 import neopixel
 import supervisor
 import keypad
+from digitalio import DigitalInOut, Direction
 
 from adafruit_led_animation.animation.blink import Blink
 from adafruit_led_animation.animation.solid import Solid
@@ -28,15 +28,9 @@ led = DigitalInOut(board.LED)
 led.direction = Direction.OUTPUT
 
 statusPixel = neopixel.NeoPixel(board.NEOPIXEL, 1, brightness=0.03, auto_write=False)
+status_animation = Blink(statusPixel, speed=0.5, color=RED)
 
 keys = keypad.Keys((board.BUTTON,), value_when_pressed=False, pull=True)
-
-neoPixelArray = None
-
-# statusPixel.fill((255,0,0))
-# statusPixel.show()
-
-status_animation = Blink(statusPixel, speed=0.5, color=RED)
 
 can_config = json.load(open("can_config.json", "r"))
 canDevice = CANDevice(
@@ -189,7 +183,7 @@ def set_status(status):
 
 canDevice.start_listener()
 
-
+# async Methods for multi-tasking
 async def status_update():
     while True:
         status_animation.animate()
@@ -221,12 +215,9 @@ async def button_monitor():
         event = keys.events.get()
         # event will be None if nothing has happened.
         if event:
-            # print(event)
-            
             if event.pressed:
                 print(event.key_number, "Pressed")
                 canDevice.send_message(API_ID.ButtonPress, message=bytes(f"Button{event.key_number}", "utf-8"))
-
             
             if event.released:
                 print(event.key_number, "Released")
