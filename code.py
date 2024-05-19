@@ -15,7 +15,7 @@ from adafruit_led_animation.animation.solid import Solid
 from adafruit_led_animation.animation.pulse import Pulse
 from adafruit_led_animation.color import RED, GREEN, BLUE, ORANGE
 
-from frc_can_7491 import CANDevice, CANMessage
+from frc_can_7491 import CANDevice, CANMessage, CANMessageType
 
 from enums import API_ID
 
@@ -33,21 +33,22 @@ status_animation = Blink(statusPixel, speed=0.5, color=RED)
 keys = keypad.Keys((board.BUTTON,), value_when_pressed=False, pull=True)
 
 can_config = json.load(open("can_config.json", "r"))
+
 canDevice = CANDevice(
-    dev_type=can_config["frc_device_type"],
-    dev_manufacturer=can_config["frc_manufacturer"],
+    dev_type= can_config.get("frc_device_type", 11), 
+    dev_manufacturer=can_config.get("frc_manufacturer", 8),
     dev_number=can_config["device_number"],
 )
 
 # TODO add routes to handle device number changes
 
 # 'Heartbeat' messages
-@canDevice.route(msg_type=CANMessage.Type.Heartbeat)
+@canDevice.route(msg_type=CANMessageType.Heartbeat)
 def heartbeat(message: CANMessage):  # pylint: disable=unused-argument
     global is_enabled, last_heartbeat_msg_time
 
-    if not is_enabled == message.Heartbeat.IsEnabled:
-        is_enabled = message.Heartbeat.IsEnabled
+    if not is_enabled == message.heartbeat.is_enabled:
+        is_enabled = message.heartbeat.is_enabled
         set_status(None)
 
     # capture the time of the last heartbeat message
@@ -58,7 +59,7 @@ def heartbeat(message: CANMessage):  # pylint: disable=unused-argument
 
 
 # 'Broadcast' messages
-@canDevice.route(msg_type=CANMessage.Type.Broadcast)
+@canDevice.route(msg_type=CANMessageType.Broadcast)
 def broadcast(message: CANMessage):  # pylint: disable=unused-argument
     global is_enabled
     # print("Broadcast: ", message.api_index)
@@ -73,7 +74,7 @@ def broadcast(message: CANMessage):  # pylint: disable=unused-argument
 def status_request(message: CANMessage):  # pylint: disable=unused-argu4117
     # immediately send a reply with a status update
     statusMessage = "Team7491"
-    canDevice.send_message(API_ID.StatusReply, message=bytes(statusMessage, "utf-8"))
+    canDevice.send_message_simple(API_ID.StatusReply, message=bytes(statusMessage, "utf-8"))
     # print("Status Sent: ", statusMessage)
     # print('\t', message)
     return
@@ -217,7 +218,7 @@ async def button_monitor():
         if event:
             if event.pressed:
                 print(event.key_number, "Pressed")
-                canDevice.send_message(API_ID.ButtonPress, message=bytes(f"Button{event.key_number}", "utf-8"))
+                canDevice.send_message_simple(API_ID.ButtonPress, message=bytes(f"Button{event.key_number}", "utf-8"))
             
             if event.released:
                 print(event.key_number, "Released")

@@ -1,5 +1,15 @@
-import board
+# SPDX-FileCopyrightText: Copyright (c) 2024 Karl Fleischmann for FRC Team 7411 Cyber Soldiers
+#
+# SPDX-License-Identifier: MIT
+"""
+`frc_can.CANDevice`
+====================================================
+FRC CAN Bus CAN Device class.
+
+* Author(s): Karl Fleischmann
+"""
 import sys
+import board
 from digitalio import DigitalInOut
 
 try:
@@ -10,11 +20,12 @@ except ImportError:
 from adafruit_mcp2515 import MCP2515 as CAN
 from adafruit_mcp2515.canio import Message, RemoteTransmissionRequest, Match, BusState
 
-from frc_can_7491 import CANMessage
-from frc_can_7491 import FRCAppId, FRCFilter, FRCMask
+from .FRCConsts import FRCAppId, FRCFilter, FRCMask
+from .CANMessage import CANMessage, CANMessageType
 
 # CAN Device Class
-class CANDevice:
+class CANDevice:  # pylint: disable=too-many-arguments
+    """CANDevice Class"""
     def __init__(
         self,
         dev_type: int,
@@ -22,7 +33,7 @@ class CANDevice:
         dev_number: int,
         baud_rate=1_000_000,
         spi=board.SPI(),
-        cs=board.CAN_CS,
+        chip_select=board.CAN_CS,
         debug=False,
     ) -> None:
 
@@ -36,12 +47,12 @@ class CANDevice:
         print("")
 
         # setup the CAN Bus
-        self.cs = DigitalInOut(cs)
-        self.cs.switch_to_output()
-        self.can_bus = CAN(spi, self.cs, baudrate=baud_rate, debug=debug)
+        self.chip_select = DigitalInOut(chip_select)
+        self.chip_select.switch_to_output()
+        self.can_bus = CAN(spi, self.chip_select, baudrate=baud_rate, debug=debug)
 
         self.handlers = {}
-
+        self.listener = None
         self.dev_mfg = dev_manufacturer
         self.dev_type = dev_type
         self.dev_num = dev_number
@@ -49,29 +60,34 @@ class CANDevice:
         self.debug = debug
         self.enabled = False
 
-        self.device_filter = self.build_device_filter(
+        CANDevice.device_filter = CANDevice.build_device_filter(
             dev_manufacturer, dev_type, dev_number
         )
 
     # create a device filter (type, mfg and number)to use when listening for packets
     # this will ignore the API_ID portion of the extended CAN id used by FRC
-    # see https://docs.wpilib.org/en/stable/docs/software/can-devices/can-addressing.html for more details
-    def build_device_filter(self, dev_manufacturer, dev_type, dev_number):
+    # see https://docs.wpilib.org/en/stable/docs/software/can-devices/can-addressing.html
+    # for more details
+    @staticmethod
+    def build_device_filter(dev_manufacturer, dev_type, dev_number):
+        """build_device_filter function"""
         return (dev_type << 24) | (dev_manufacturer << 16) | (0x00 << 6) | (dev_number)
 
     def get_device_filter_bin(self):
+        """get_device_filter_bin function"""
         return bin(self.device_filter)
 
     def route(
         self,
         api_id: int = FRCAppId.heartbeat,
-        msg_type: CANMessage.Type = CANMessage.Type.Device,
+        msg_type: CANMessageType = CANMessageType.Device,
     ):
         """Decorator used to add a route to handle incoming CAN Messages.
 
         Parameters::
         :param int               api_id: API Class and API Index that this route will handle
-        :param CANMessage.Type   method: Type of CAN message to handle for (i.e. Heartbeat, Device or Broadcast)
+        :param CANMessage.Type   method: Type of CAN message to handle for
+                                         (i.e. Heartbeat, Device or Broadcast)
 
         Example::
 
@@ -80,7 +96,7 @@ class CANDevice:
                 # route body handling message
         """
 
-        if msg_type == CANMessage.Type.Broadcast:
+        if msg_type == CANMessageType.Broadcast:
             api_id = FRCAppId.broadcast
 
         def route_decorator(func: Callable) -> Callable:
@@ -89,32 +105,31 @@ class CANDevice:
 
         return route_decorator
 
-    def send_message(self, apiClass: int, apiIndex: int, message: bytes):
-        send_success = False
-
+    def send_message(self, api_class: int, api_index: int, message: bytes):
+        """send_message function"""
         msg_id = CANMessage.assemble_message_id(
-            self.dev_type, self.dev_mfg, int(apiClass), int(apiIndex), self.dev_num
+            self.dev_type, self.dev_mfg, int(api_class), int(api_index), self.dev_num
         )
 
         return self.__send_can_message(msg_id, message)
 
-    def send_message(self, apiId: int, message: bytes):
-        send_success = False
-
-        msg_id = CANMessage.assemble_message_id(
-            self.dev_type, self.dev_mfg, int(apiId), self.dev_num
+    def send_message_simple(self, api_id: int, message: bytes):
+        """send_message_simple function"""
+        msg_id = CANMessage.assemble_message_id_short(
+            self.dev_type, self.dev_mfg, int(api_id), self.dev_num
         )
 
         return self.__send_can_message(msg_id, message)
 
     def __send_can_message(self, msg_id, message):
+        """__send_can_message function"""
         # construct MCP2515 message
-        canMessage = Message(id=msg_id, data=message, extended=True)
+        can_message = Message(id=msg_id, data=message, extended=True)
 
         # depending on the can bus state, send the message
         if self.can_bus.state in (BusState.ERROR_ACTIVE, BusState.ERROR_WARNING):
             try:
-                send_success = self.can_bus.send(canMessage)
+                send_success = self.can_bus.send(can_message)
             except RuntimeError as ex:
                 print("Unexpected error:", ex)
         else:
@@ -143,17 +158,18 @@ class CANDevice:
                     FRCFilter.heartbeat,
                     extended=True,
                 ),
-                # FRC Broadcast messages use the API_Index bits to indicate the broadcast message
-                # the remaining bits are set to 0.  Therefore this match can use the same mask as the 
-                # device speficic one which only looks at only the type, manufacturer and number.
+                # FRC Broadcast messages use the API_Index bits to indicate the
+                # broadcast message the remaining bits are set to 0.  Therefore
+                # this match can use the same mask as the device speficic one
+                # which only looks at only the type, manufacturer and number.
                 Match(
                     FRCFilter.broadcast,
                     mask=FRCMask.type_mfg_num,
                     extended=True,
                 ),
                 # The remaining messages we're concerned with are the device specific messages.
-                # This match will use device mask to match on only the type, manufacture and number of 
-                # this device
+                # This match will use device mask to match on only the type, manufacture and
+                # number of this device
                 Match(
                     self.device_filter,
                     mask=FRCMask.type_mfg_num,
@@ -166,6 +182,7 @@ class CANDevice:
         print()
 
     def receive_messages(self):
+        """receive_messages function"""
         # receive CAN messages and split out the device, api and data values
         message_count = self.listener.in_waiting()
         # print(message_count, "messages received")
@@ -184,16 +201,16 @@ class CANDevice:
                     route(message)
                 else:
                     # If not log an error.
-                    if message.api_id == FRCAppId.heartbeat:
+                    if message.api_id_p == FRCAppId.heartbeat:
                         print("Handler Not Defined for FRC Heartbeat messages")
                         print(bin(msg.id), bin(int.from_bytes(msg.data, sys.byteorder)))
-                    elif message.api_class == FRCAppId.broadcast:
+                    elif message.api_class_id == FRCAppId.broadcast:
                         print("Handler Not Defined for FRC Broadcast messages")
                         print(bin(msg.id), bin(int.from_bytes(msg.data, sys.byteorder)))
                     else:
                         print(
                             "Handler Not Defined. API ID:",
-                            hex(message.api_id),
+                            hex(message.api_id_p),
                             "Message Type:",
                             message.msg_type,
                             bin(msg.id),
