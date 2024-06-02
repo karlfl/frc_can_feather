@@ -11,8 +11,10 @@ import keypad
 from digitalio import DigitalInOut, Direction
 
 from adafruit_led_animation.animation.blink import Blink
-from adafruit_led_animation.animation.solid import Solid
 from adafruit_led_animation.animation.pulse import Pulse
+from adafruit_led_animation.animation.rainbowsparkle import RainbowSparkle
+from adafruit_led_animation.animation.rainbowcomet import RainbowComet
+from adafruit_led_animation.animation.solid import Solid
 from adafruit_led_animation.color import RED, GREEN, BLUE, ORANGE
 
 from frc_can_7491 import CANDevice, CANMessage, CANMessageType
@@ -31,6 +33,12 @@ statusPixel = neopixel.NeoPixel(board.NEOPIXEL, 1, brightness=0.03, auto_write=F
 status_animation = Blink(statusPixel, speed=0.5, color=RED)
 
 keys = keypad.Keys((board.BUTTON,), value_when_pressed=False, pull=True)
+
+pixel_pin = board.D12
+pixel_num = 1
+pixel_brightness = 30
+pixels = None
+pixel_animation = None
 
 can_config = json.load(open("can_config.json", "r"))
 
@@ -63,7 +71,7 @@ def heartbeat(message: CANMessage):  # pylint: disable=unused-argument
 def broadcast(message: CANMessage):  # pylint: disable=unused-argument
     global is_enabled
     # print("Broadcast: ", message.api_index)
-    if message.APIIndex == 0:  # broadcast index of 0 = disable immediately
+    if message.api_index == 0:  # broadcast index of 0 = disable immediately
         is_enabled = False
         set_status(None)
     return
@@ -91,32 +99,38 @@ def set_device_number(message: CANMessage):  # pylint: disable=unused-argu4117
 # Set Number of LEDs
 @canDevice.route(API_ID.InitPixelArray)
 def init_pixel_array(message: CANMessage):  # pylint: disable=unused-argument
-    # pixel_num = int(CANMessage.Data)
-    # pixels = AddressableLED(pixel_pin,pixel_num)
+    print("Brightness:", int(message.data[6]))
+    print("Number of LEDs:", int(message.data[7]))
+    print("Pixel Pin", pixel_pin)
 
-    # print("Device", hex(message.api_id))
-    # print('\t', message)
-    # Number of LEDs is found in the right most byte
-    print("Brightness:", int(message.Data[6]))
-    print("Number of LEDs:", int(message.Data[7]))
+    global pixel_num, pixel_brightness, pixels, pixel_animation
+    if(pixels):
+        pixels.deinit()
+    pixel_num = int(message.data[7])
+    pixel_brightness = int(message.data[6])
+    pixels = neopixel.NeoPixel(pixel_pin, pixel_num, brightness=pixel_brightness, auto_write=False)
+    pixel_animation = Blink(pixels, speed=0.5, color=RED)
+
     return
 
 
 # Pattern Chaos
 @canDevice.route(API_ID.PatternChaos)
 def base(message: CANMessage):  # pylint: disable=unused-argument
-    # global status_animation
-    # status_animation = Pulse(statusPixel, speed=0.1, color=ORANGE, period=3)
-    # print("Device", hex(message.api_id))
-    # print('\t', message)
+    global pixel_animation
+    if(pixels and not isinstance(pixel_animation, RainbowSparkle)):
+        pixel_animation = RainbowSparkle(pixels, speed=0.05, num_sparkles=30)
+        print('\t', 'Pattern Chaos')
     return
 
 
 # Pattern Rainbow
 @canDevice.route(API_ID.PatternRainbow)
 def base(message: CANMessage):  # pylint: disable=unused-argument
-    # print("Device", hex(message.api_id))
-    # print('\t', message)
+    global pixel_animation
+    if(pixels and not isinstance(pixel_animation, RainbowComet)):
+        pixel_animation = RainbowComet(pixels, speed=0.05, tail_length=10, bounce=True)
+        print('\t', 'Pattern Rainbow')
     return
 
 
@@ -188,6 +202,8 @@ canDevice.start_listener()
 async def status_update():
     while True:
         status_animation.animate()
+        if (pixel_animation):
+            pixel_animation.animate()
 
         # update the status every 20ms
         await asyncio.sleep(0.02)
